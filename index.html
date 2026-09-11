@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Contabilidad de comprobantes</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap');
+
+  :root{
+    --paper:#F6F1E4;
+    --paper-line:#e7dfc8;
+    --ink:#1F2A22;
+    --ink-soft:#4b5647;
+    --muted:#8b8370;
+    --spine:#24422E;
+    --spine-light:#345940;
+    --spine-text:#EDE7D6;
+    --stamp:#A6432D;
+    --stamp-dark:#833527;
+    --line:#D8CFB8;
+    --ok:#3d6b45;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;}
+  body{
+    background:var(--paper);
+    color:var(--ink);
+    font-family:'Inter',sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  #app{display:flex;min-height:100vh;}
+  h1,h2,h3{font-family:'Source Serif 4',Georgia,serif;margin:0;font-weight:600;}
+  .mono{font-family:'IBM Plex Mono',monospace;}
+
+  /* ---------- Sidebar ---------- */
+  .sidebar{width:220px;flex-shrink:0;background:var(--spine);color:var(--spine-text);display:flex;flex-direction:column;padding:28px 0;}
+  .brand{padding:0 22px 24px 22px;font-family:'Source Serif 4',serif;font-size:19px;font-weight:600;border-bottom:1px solid rgba(237,231,214,0.18);margin-bottom:10px;line-height:1.3;}
+  .brand span{display:block;font-family:'Inter',sans-serif;font-size:12px;font-weight:400;color:#b9c2b3;margin-top:4px;}
+  .nav-btn{display:flex;align-items:center;gap:12px;width:100%;background:none;border:none;color:#cdd6c6;font-family:'Inter',sans-serif;font-size:14.5px;padding:13px 22px;text-align:left;cursor:pointer;border-left:3px solid transparent;transition:background .15s ease, color .15s ease;}
+  .nav-btn svg{flex-shrink:0;opacity:0.85;}
+  .nav-btn:hover{background:rgba(237,231,214,0.06);color:var(--spine-text);}
+  .nav-btn.active{background:rgba(237,231,214,0.09);color:#fff;border-left-color:var(--stamp);font-weight:500;}
+
+  /* ---------- Main content ---------- */
+  .content{flex:1;min-width:0;padding:36px 40px 60px 40px;background-image:repeating-linear-gradient(var(--paper) 0px, var(--paper) 33px, var(--paper-line) 34px);}
+  .view{display:none;max-width:760px;}
+  .view.active{display:block;}
+  .view-header{margin-bottom:26px;}
+  .view-header h2{font-size:24px;}
+  .view-header p{margin:6px 0 0 0;color:var(--muted);font-size:14px;}
+
+  /* ---------- Inicio ---------- */
+  .total-block{display:flex;align-items:center;gap:26px;padding:26px 0 30px 0;border-bottom:1px solid var(--line);margin-bottom:26px;}
+  .stamp-mark{width:96px;height:96px;flex-shrink:0;border:3px solid var(--stamp);border-radius:50%;display:flex;align-items:center;justify-content:center;transform:rotate(-6deg);color:var(--stamp);font-family:'Inter',sans-serif;font-size:11px;font-weight:600;letter-spacing:0.04em;text-align:center;opacity:0.9;}
+  .total-amount{font-size:52px;font-weight:600;line-height:1;color:var(--ink);}
+  .total-label{font-size:13px;color:var(--muted);margin-top:6px;}
+  .capture-btn{display:inline-flex;align-items:center;gap:10px;background:var(--stamp);color:#fff;border:none;padding:14px 26px;border-radius:3px;font-family:'Inter',sans-serif;font-size:15px;font-weight:500;cursor:pointer;transition:background .15s ease;}
+  .capture-btn:hover{background:var(--stamp-dark);}
+  .capture-btn:disabled{background:#b9ab9c;cursor:default;}
+  .status-line{margin-top:16px;font-size:13.5px;color:var(--ink-soft);display:flex;align-items:center;gap:8px;min-height:20px;}
+  .spinner{width:14px;height:14px;border:2px solid var(--line);border-top-color:var(--stamp);border-radius:50%;animation:spin .8s linear infinite;}
+  @media (prefers-reduced-motion:reduce){.spinner{animation:none;}}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .recent-title{font-size:13px;color:var(--muted);margin:30px 0 10px 0;}
+  .receipt-row{display:flex;align-items:center;gap:14px;padding:10px 0;border-bottom:1px solid var(--paper-line);}
+  .receipt-thumb{width:44px;height:44px;object-fit:cover;border-radius:2px;border:1px solid var(--line);flex-shrink:0;cursor:pointer;background:#eee;}
+  .receipt-time{font-size:12.5px;color:var(--muted);width:52px;flex-shrink:0;}
+  .receipt-amount{font-size:15px;font-weight:500;margin-left:auto;}
+  .receipt-edit{background:none;border:none;color:var(--muted);cursor:pointer;font-size:12px;text-decoration:underline;padding:0 0 0 10px;}
+  .empty-note{color:var(--muted);font-size:14px;padding:14px 0;}
+
+  /* ---------- Capturas de ventas ---------- */
+  .date-group{margin-bottom:28px;}
+  .date-group h3{font-size:15px;color:var(--ink-soft);margin-bottom:8px;font-weight:600;}
+  .date-total{color:var(--muted);font-weight:400;font-size:13px;}
+  .load-more{background:none;border:1px solid var(--line);color:var(--ink-soft);padding:9px 18px;border-radius:3px;font-size:13.5px;cursor:pointer;font-family:'Inter',sans-serif;}
+  .load-more:hover{border-color:var(--ink-soft);}
+
+  /* ---------- Graficas ---------- */
+  .chart-wrap{margin-top:10px;}
+  .bar-label-value{font-family:'IBM Plex Mono',monospace;font-size:11.5px;fill:var(--ink);}
+  .bar-label-day{font-family:'Inter',sans-serif;font-size:11.5px;fill:var(--muted);}
+
+  /* ---------- Lightbox ---------- */
+  .lightbox{position:fixed;inset:0;background:rgba(31,42,34,0.82);display:none;align-items:center;justify-content:center;z-index:50;padding:20px;}
+  .lightbox.active{display:flex;}
+  .lightbox img{max-width:min(90vw,480px);max-height:80vh;border-radius:4px;}
+
+  @media (max-width:680px){
+    #app{flex-direction:column;}
+    .sidebar{width:100%;flex-direction:row;padding:0;order:2;position:sticky;bottom:0;justify-content:space-around;align-items:stretch;}
+    .brand{display:none;}
+    .nav-btn{flex-direction:column;gap:4px;justify-content:center;padding:10px 6px 12px 6px;border-left:none;border-top:3px solid transparent;font-size:11.5px;flex:1;text-align:center;}
+    .nav-btn.active{border-top-color:var(--stamp);}
+    .content{padding:24px 18px 90px 18px;order:1;}
+    .total-amount{font-size:40px;}
+    .stamp-mark{width:76px;height:76px;font-size:10px;}
+  }
+</style>
+</head>
+<body>
+
+<div id="app">
+
+  <nav class="sidebar">
+    <div class="brand">Comprobantes<span>Registro diario de ventas</span></div>
+    <button class="nav-btn active" data-view="inicio">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/></svg>
+      Inicio
+    </button>
+    <button class="nav-btn" data-view="capturas">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7l1.5-3h5L16 7"/><circle cx="12" cy="13.5" r="3.2"/></svg>
+      Capturas de ventas
+    </button>
+    <button class="nav-btn" data-view="graficas">
+      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 20V10"/><path d="M12 20V4"/><path d="M20 20v-7"/></svg>
+      Gráficas de ventas
+    </button>
+  </nav>
+
+  <main class="content">
+    <section class="view active" id="view-inicio">
+      <div class="view-header">
+        <h2 id="inicio-fecha">Hoy</h2>
+        <p>El total se reinicia cada día; queda guardado en las gráficas.</p>
+      </div>
+      <div class="total-block">
+        <div class="stamp-mark">HOY</div>
+        <div>
+          <div class="total-amount mono" id="total-hoy">$0.00</div>
+          <div class="total-label">Vendido hoy · <span id="conteo-hoy">0 comprobantes</span></div>
+        </div>
+      </div>
+      <button class="capture-btn" id="btn-tomar-foto">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M8 7l1.7-3h4.6L16 7"/><circle cx="12" cy="14" r="3.4"/></svg>
+        Tomar foto del comprobante
+      </button>
+      <input type="file" id="input-foto" accept="image/*" capture="environment" style="display:none;">
+      <div class="status-line" id="status-line"></div>
+      <div class="recent-title">Últimos comprobantes de hoy</div>
+      <div id="lista-recientes"></div>
+    </section>
+
+    <section class="view" id="view-capturas">
+      <div class="view-header">
+        <h2>Capturas de ventas</h2>
+        <p>Todas las fotos de comprobantes, agrupadas por día. No se borran al reiniciar el día.</p>
+      </div>
+      <div id="capturas-lista"></div>
+      <button class="load-more" id="btn-cargar-mas" style="display:none;">Cargar días anteriores</button>
+    </section>
+
+    <section class="view" id="view-graficas">
+      <div class="view-header">
+        <h2>Gráficas de ventas</h2>
+        <p>Historial de ventas por día. No se reinicia.</p>
+      </div>
+      <div class="chart-wrap" id="chart-wrap"></div>
+    </section>
+  </main>
+</div>
+
+<div class="lightbox" id="lightbox"><img id="lightbox-img" src="" alt="Comprobante ampliado"></div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-app.js";
+import {
+  getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit,
+  doc, updateDoc, serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
+import {
+  getStorage, ref, uploadBytes, getDownloadURL
+} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
+
+// ======= PEGA AQUÍ EL MISMO firebaseConfig que usaste en el fichero de clientes =======
+const firebaseConfig = {
+  apiKey: "TU_API_KEY",
+  authDomain: "TU_PROYECTO.firebaseapp.com",
+  projectId: "TU_PROYECTO",
+  storageBucket: "TU_PROYECTO.appspot.com",
+  messagingSenderId: "TU_SENDER_ID",
+  appId: "TU_APP_ID"
+};
+// ========================================================================================
+
+const app = initializeApp(firebaseConfig);
+const db = getFirestore(app);
+const storage = getStorage(app);
+const receiptsCol = collection(db, "receipts");
+
+(function(){
+  // ---------- Helpers de fecha ----------
+  function pad(n){return n.toString().padStart(2,'0');}
+  function dateStr(d){return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;}
+  function todayStr(){return dateStr(new Date());}
+  const DIAS = ['domingo','lunes','martes','miércoles','jueves','viernes','sábado'];
+  const DIAS_ABR = ['dom','lun','mar','mié','jue','vie','sáb'];
+  const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+  function formatLargo(ds){
+    const [y,m,d] = ds.split('-').map(Number);
+    const dt = new Date(y, m-1, d);
+    return `${DIAS[dt.getDay()]}, ${d} de ${MESES[m-1]}`;
+  }
+  function formatHora(d){
+    let h = d.getHours(); const min = pad(d.getMinutes());
+    const ampm = h >= 12 ? 'p.m.' : 'a.m.';
+    h = h % 12; if(h===0) h = 12;
+    return `${h}:${min} ${ampm}`;
+  }
+  function money(n){ return '$' + (Number(n)||0).toFixed(2); }
+
+  // ---------- Estado ----------
+  let todayReceipts = [];
+  let capturasDocs = [];
+  let capturasDates = [];
+  let capturasCargadas = 0;
+  const CAPTURAS_POR_PAGINA = 7;
+  let capturasCache = {};
+
+  // ---------- Navegación ----------
+  document.querySelectorAll('.nav-btn').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('.nav-btn').forEach(b=>b.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      btn.classList.add('active');
+      document.getElementById('view-'+btn.dataset.view).classList.add('active');
+      if(btn.dataset.view === 'capturas'){ capturasCargadas = 0; document.getElementById('capturas-lista').innerHTML=''; loadCapturas(); }
+      if(btn.dataset.view === 'graficas') renderGraficas();
+    });
+  });
+
+  // ---------- Carga inicial ----------
+  async function init(){
+    const hoy = todayStr();
+    document.getElementById('inicio-fecha').textContent = formatLargo(hoy).replace(/^./, c=>c.toUpperCase());
+    const qToday = query(receiptsCol, where('date','==',hoy), orderBy('createdAt','asc'));
+    const snap = await getDocs(qToday);
+    todayReceipts = snap.docs.map(d=>({id:d.id, ...d.data()}));
+    renderInicio();
+  }
+
+  function renderInicio(){
+    const total = todayReceipts.reduce((s,r)=>s+Number(r.amount||0),0);
+    document.getElementById('total-hoy').textContent = money(total);
+    document.getElementById('conteo-hoy').textContent = todayReceipts.length === 1 ? '1 comprobante' : `${todayReceipts.length} comprobantes`;
+    const cont = document.getElementById('lista-recientes');
+    cont.innerHTML = '';
+    if(todayReceipts.length === 0){
+      cont.innerHTML = '<div class="empty-note">Aún no hay comprobantes hoy. Toma una foto para empezar.</div>';
+      return;
+    }
+    [...todayReceipts].slice(-6).reverse().forEach(r=>cont.appendChild(receiptRow(r, true)));
+  }
+
+  function receiptRow(r, editable){
+    const row = document.createElement('div');
+    row.className = 'receipt-row';
+    const img = document.createElement('img');
+    img.className = 'receipt-thumb';
+    img.src = r.photoUrl;
+    img.alt = 'Comprobante';
+    img.addEventListener('click', ()=>openLightbox(r.photoUrl));
+    const time = document.createElement('div');
+    time.className = 'receipt-time';
+    time.textContent = r.time || '';
+    const amt = document.createElement('div');
+    amt.className = 'receipt-amount mono';
+    amt.textContent = money(r.amount);
+    row.appendChild(img); row.appendChild(time); row.appendChild(amt);
+    if(editable){
+      const edit = document.createElement('button');
+      edit.className = 'receipt-edit';
+      edit.textContent = 'corregir';
+      edit.addEventListener('click', ()=>editAmount(r));
+      row.appendChild(edit);
+    }
+    return row;
+  }
+
+  async function editAmount(r){
+    const nuevo = prompt('Corrige el monto de este comprobante:', r.amount);
+    if(nuevo === null) return;
+    const val = parseFloat(nuevo.replace(',','.'));
+    if(isNaN(val)){ alert('Ese monto no es válido.'); return; }
+    await updateDoc(doc(db,'receipts',r.id), {amount: val});
+    r.amount = val;
+    renderInicio();
+    if(document.getElementById('view-capturas').classList.contains('active')){
+      capturasCargadas = 0; document.getElementById('capturas-lista').innerHTML=''; loadCapturas();
+    }
+  }
+
+  function openLightbox(src){
+    document.getElementById('lightbox-img').src = src;
+    document.getElementById('lightbox').classList.add('active');
+  }
+  document.getElementById('lightbox').addEventListener('click', ()=>{
+    document.getElementById('lightbox').classList.remove('active');
+  });
+
+  // ---------- Captura de foto ----------
+  const inputFoto = document.getElementById('input-foto');
+  document.getElementById('btn-tomar-foto').addEventListener('click', ()=>inputFoto.click());
+
+  function setStatus(html, spin){
+    document.getElementById('status-line').innerHTML = spin ? `<span class="spinner"></span>${html}` : html;
+  }
+
+  inputFoto.addEventListener('change', async (e)=>{
+    const file = e.target.files[0];
+    inputFoto.value = '';
+    if(!file) return;
+    const btn = document.getElementById('btn-tomar-foto');
+    btn.disabled = true;
+    setStatus('Procesando foto…', true);
+    try{
+      const {base64, blob} = await compressImage(file, 480, 0.55);
+      setStatus('Leyendo el monto con IA…', true);
+      const amount = await readAmountFromImage(base64);
+      let finalAmount = amount;
+      if(finalAmount === null){
+        setStatus('No se pudo leer el monto automáticamente.', false);
+        const manual = prompt('No pude leer el monto del comprobante. Escríbelo tú:');
+        if(manual === null){ btn.disabled = false; setStatus(''); return; }
+        finalAmount = parseFloat(manual.replace(',','.'));
+        if(isNaN(finalAmount)){ setStatus('Monto inválido, no se guardó.', false); btn.disabled = false; return; }
+      }
+      const now = new Date();
+      const hoy = todayStr();
+      const path = `receipts/${hoy}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
+      const sref = ref(storage, path);
+      await uploadBytes(sref, blob, {contentType:'image/jpeg'});
+      const photoUrl = await getDownloadURL(sref);
+      const docRef = await addDoc(receiptsCol, {
+        date: hoy,
+        time: formatHora(now),
+        amount: finalAmount,
+        photoUrl,
+        createdAt: serverTimestamp()
+      });
+      todayReceipts.push({id: docRef.id, date: hoy, time: formatHora(now), amount: finalAmount, photoUrl});
+      setStatus(`Agregado: ${money(finalAmount)}`, false);
+      renderInicio();
+      setTimeout(()=>setStatus(''), 3000);
+    }catch(err){
+      console.error(err);
+      setStatus('Ocurrió un error guardando la foto. Intenta de nuevo.', false);
+    }finally{
+      btn.disabled = false;
+    }
+  });
+
+  function compressImage(file, maxWidth, quality){
+    return new Promise((resolve, reject)=>{
+      const reader = new FileReader();
+      reader.onload = ()=>{
+        const img = new Image();
+        img.onload = ()=>{
+          const scale = Math.min(1, maxWidth/img.width);
+          const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
+          const canvas = document.createElement('canvas');
+          canvas.width = w; canvas.height = h;
+          canvas.getContext('2d').drawImage(img,0,0,w,h);
+          canvas.toBlob((blob)=>{
+            const dataUrl = canvas.toDataURL('image/jpeg', quality);
+            resolve({base64: dataUrl.split(',')[1], blob});
+          }, 'image/jpeg', quality);
+        };
+        img.onerror = reject;
+        img.src = reader.result;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function readAmountFromImage(base64){
+    try{
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          model:'claude-sonnet-4-6',
+          max_tokens:200,
+          messages:[{
+            role:'user',
+            content:[
+              {type:'image', source:{type:'base64', media_type:'image/jpeg', data: base64}},
+              {type:'text', text:'Analiza este comprobante de transferencia bancaria. Responde ÚNICAMENTE con un JSON de una sola línea con la forma {"amount": 12.34}, usando el monto total transferido como número (usa punto decimal, sin símbolos de moneda). Si no puedes determinar el monto con certeza, responde {"amount": null}. No incluyas explicaciones ni bloques de código.'}
+            ]
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = (data.content||[]).map(b=>b.text||'').join('');
+      const clean = text.replace(/```json|```/g,'').trim();
+      const parsed = JSON.parse(clean);
+      const val = parseFloat(parsed.amount);
+      return isNaN(val) ? null : val;
+    }catch(e){
+      console.error('vision error', e);
+      return null;
+    }
+  }
+
+  // ---------- Capturas de ventas ----------
+  async function loadCapturas(){
+    const loadMoreBtn = document.getElementById('btn-cargar-mas');
+    if(capturasDocs.length === 0){
+      const qAll = query(receiptsCol, orderBy('date','desc'), orderBy('createdAt','desc'), limit(400));
+      const snap = await getDocs(qAll);
+      capturasDocs = snap.docs.map(d=>({id:d.id, ...d.data()}));
+      const seen = new Set();
+      capturasDates = [];
+      capturasDocs.forEach(r=>{ if(!seen.has(r.date)){ seen.add(r.date); capturasDates.push(r.date); } });
+      capturasDates.forEach(ds=>{ capturasCache[ds] = capturasDocs.filter(r=>r.date===ds); });
+    }
+    const cont = document.getElementById('capturas-lista');
+    if(capturasDates.length === 0){
+      cont.innerHTML = '<div class="empty-note">Todavía no hay comprobantes guardados.</div>';
+      loadMoreBtn.style.display = 'none';
+      return;
+    }
+    const desde = capturasCargadas;
+    const hasta = Math.min(capturasDates.length, desde + CAPTURAS_POR_PAGINA);
+    for(let i=desde;i<hasta;i++){
+      const ds = capturasDates[i];
+      const list = capturasCache[ds];
+      const group = document.createElement('div');
+      group.className = 'date-group';
+      const total = list.reduce((s,r)=>s+Number(r.amount||0),0);
+      const h3 = document.createElement('h3');
+      h3.textContent = formatLargo(ds).replace(/^./, c=>c.toUpperCase());
+      const span = document.createElement('span');
+      span.className = 'date-total mono';
+      span.textContent = '  ·  '+money(total);
+      h3.appendChild(span);
+      group.appendChild(h3);
+      list.forEach(r=>group.appendChild(receiptRow(r, true)));
+      cont.appendChild(group);
+    }
+    capturasCargadas = hasta;
+    loadMoreBtn.style.display = capturasCargadas < capturasDates.length ? 'inline-block' : 'none';
+  }
+  document.getElementById('btn-cargar-mas').addEventListener('click', loadCapturas);
+
+  // ---------- Graficas de ventas ----------
+  async function renderGraficas(){
+    const dias = [];
+    const hoy = new Date();
+    for(let i=13;i>=0;i--){
+      const d = new Date(hoy); d.setDate(hoy.getDate()-i);
+      dias.push(dateStr(d));
+    }
+    const desde14 = dias[0];
+    const qRange = query(receiptsCol, where('date','>=', desde14), orderBy('date','asc'));
+    const snap = await getDocs(qRange);
+    const totalsByDate = {};
+    snap.docs.forEach(d=>{
+      const r = d.data();
+      totalsByDate[r.date] = (totalsByDate[r.date]||0) + Number(r.amount||0);
+    });
+    const valores = dias.map(ds => totalsByDate[ds] || 0);
+
+    const w = 680, hgt = 260, padL = 4, padB = 34, padT = 20;
+    const max = Math.max(1, ...valores);
+    const barW = (w - padL*2) / dias.length * 0.62;
+    const gap = (w - padL*2) / dias.length;
+
+    let bars = '';
+    dias.forEach((ds,i)=>{
+      const v = valores[i];
+      const barH = (v/max) * (hgt - padB - padT);
+      const x = padL + i*gap + (gap-barW)/2;
+      const y = hgt - padB - barH;
+      const isToday = ds === todayStr();
+      const color = isToday ? 'var(--stamp)' : 'var(--spine-light)';
+      const d = ds.split('-');
+      const dayAbbr = DIAS_ABR[new Date(+d[0],+d[1]-1,+d[2]).getDay()];
+      bars += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(barH,1)}" rx="2" fill="${color}"></rect>`;
+      if(v>0){
+        bars += `<text class="bar-label-value" x="${x+barW/2}" y="${y-6}" text-anchor="middle">${v>=1000?Math.round(v):v.toFixed(0)}</text>`;
+      }
+      bars += `<text class="bar-label-day" x="${x+barW/2}" y="${hgt-14}" text-anchor="middle">${dayAbbr} ${d[2]}</text>`;
+    });
+
+    document.getElementById('chart-wrap').innerHTML =
+      `<svg viewBox="0 0 ${w} ${hgt}" style="width:100%;height:auto;max-width:680px;">
+         <line x1="${padL}" y1="${hgt-padB}" x2="${w-padL}" y2="${hgt-padB}" stroke="var(--line)" stroke-width="1"/>
+         ${bars}
+       </svg>
+       <p style="color:var(--muted);font-size:13px;margin-top:6px;">Últimos 14 días · el día de hoy se muestra en color distinto y aún puede cambiar.</p>`;
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>
