@@ -19,7 +19,7 @@
     --gray-accent:#6E6E6E;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;}
+  html,body{margin:0;padding:0;height:100%;overscroll-behavior-y:contain;}
   body{
     background:var(--bg);
     color:var(--ink);
@@ -331,8 +331,9 @@ const receiptsCol = collection(db, "receipts");
     setStatus('Procesando foto…', true);
     try{
       const base64 = await compressImage(file, 480, 0.55);
+      const base64ParaIA = await compressImage(file, 1000, 0.82);
       setStatus('Leyendo el monto con IA…', true);
-      const amount = await readAmountFromImage(base64);
+      const amount = await readAmountFromImage(base64ParaIA);
       let finalAmount = amount;
       if(finalAmount === null){
         setStatus('No se pudo leer el monto automáticamente.', false);
@@ -396,7 +397,7 @@ const receiptsCol = collection(db, "receipts");
             role:'user',
             content:[
               {type:'image', source:{type:'base64', media_type:'image/jpeg', data: base64}},
-              {type:'text', text:'Analiza este comprobante de transferencia bancaria. Responde ÚNICAMENTE con un JSON de una sola línea con la forma {"amount": 12.34}, usando el monto total transferido como número (usa punto decimal, sin símbolos de moneda). Si no puedes determinar el monto con certeza, responde {"amount": null}. No incluyas explicaciones ni bloques de código.'}
+              {type:'text', text:'Esta imagen es una foto tomada con cámara de la pantalla de un celular, mostrando un comprobante de una transferencia o pago (apps como DeUna, o bancos como Banco Pichincha, Banco Internacional, Banco de Guayaquil, BGR, etc.). Puede tener reflejos, dedos o el marco del teléfono alrededor. Ignora la hora, batería o señal de la barra superior del celular, esas nunca son el monto. Encuentra el monto REAL de la transferencia: suele decir "Monto", "Valor transferido", "Valor pagado" o aparecer como el número grande junto a "Transferencia Exitosa". Si el comprobante muestra por separado un "Valor transferido" y un "Total debitado" (que incluye comisión), usa el "Valor transferido" (sin comisión), NO el total debitado. Responde ÚNICAMENTE con un JSON de una sola línea con la forma {"amount": 12.34}, usando ese monto como número (punto decimal, sin símbolos de moneda). Si la foto está borrosa o no puedes estar seguro del número, responde {"amount": null}. No incluyas explicaciones ni bloques de código.'}
             ]
           }]
         })
