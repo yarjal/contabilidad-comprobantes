@@ -169,9 +169,6 @@ import {
   getFirestore, collection, addDoc, getDocs, query, where, orderBy, limit,
   doc, updateDoc, serverTimestamp
 } from "https://www.gstatic.com/firebasejs/10.13.0/firebase-firestore.js";
-import {
-  getStorage, ref, uploadBytes, getDownloadURL
-} from "https://www.gstatic.com/firebasejs/10.13.0/firebase-storage.js";
 
 // ======= PEGA AQUÍ EL MISMO firebaseConfig que usaste en el fichero de clientes =======
 const firebaseConfig = {
@@ -186,7 +183,6 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 const db = getFirestore(app);
-const storage = getStorage(app);
 const receiptsCol = collection(db, "receipts");
 
 (function(){
@@ -258,9 +254,9 @@ const receiptsCol = collection(db, "receipts");
     row.className = 'receipt-row';
     const img = document.createElement('img');
     img.className = 'receipt-thumb';
-    img.src = r.photoUrl;
+    img.src = 'data:image/jpeg;base64,'+r.photoBase64;
     img.alt = 'Comprobante';
-    img.addEventListener('click', ()=>openLightbox(r.photoUrl));
+    img.addEventListener('click', ()=>openLightbox(img.src));
     const time = document.createElement('div');
     time.className = 'receipt-time';
     time.textContent = r.time || '';
@@ -315,7 +311,7 @@ const receiptsCol = collection(db, "receipts");
     btn.disabled = true;
     setStatus('Procesando foto…', true);
     try{
-      const {base64, blob} = await compressImage(file, 480, 0.55);
+      const base64 = await compressImage(file, 480, 0.55);
       setStatus('Leyendo el monto con IA…', true);
       const amount = await readAmountFromImage(base64);
       let finalAmount = amount;
@@ -328,18 +324,14 @@ const receiptsCol = collection(db, "receipts");
       }
       const now = new Date();
       const hoy = todayStr();
-      const path = `receipts/${hoy}/${Date.now()}-${Math.random().toString(36).slice(2,8)}.jpg`;
-      const sref = ref(storage, path);
-      await uploadBytes(sref, blob, {contentType:'image/jpeg'});
-      const photoUrl = await getDownloadURL(sref);
       const docRef = await addDoc(receiptsCol, {
         date: hoy,
         time: formatHora(now),
         amount: finalAmount,
-        photoUrl,
+        photoBase64: base64,
         createdAt: serverTimestamp()
       });
-      todayReceipts.push({id: docRef.id, date: hoy, time: formatHora(now), amount: finalAmount, photoUrl});
+      todayReceipts.push({id: docRef.id, date: hoy, time: formatHora(now), amount: finalAmount, photoBase64: base64});
       setStatus(`Agregado: ${money(finalAmount)}`, false);
       renderInicio();
       setTimeout(()=>setStatus(''), 3000);
@@ -362,10 +354,8 @@ const receiptsCol = collection(db, "receipts");
           const canvas = document.createElement('canvas');
           canvas.width = w; canvas.height = h;
           canvas.getContext('2d').drawImage(img,0,0,w,h);
-          canvas.toBlob((blob)=>{
-            const dataUrl = canvas.toDataURL('image/jpeg', quality);
-            resolve({base64: dataUrl.split(',')[1], blob});
-          }, 'image/jpeg', quality);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl.split(',')[1]);
         };
         img.onerror = reject;
         img.src = reader.result;
