@@ -205,12 +205,12 @@ const firebaseConfig = {
 // y queda guardada en tu navegador (no se pierde aunque actualicemos este archivo).
 function getGeminiKey(){
   let k = null;
-  try{ k = localStorage.getItem('gemini_api_key'); }catch(e){}
+  try{ k = localStorage.getItem(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg); }catch(e){}
   if(!k){
-    k = prompt('Pega aquí tu clave de Gemini (solo se te pide una vez en este dispositivo):');
+    k = prompt(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg);
     if(k){
       k = k.trim();
-      try{ localStorage.setItem('gemini_api_key', k); }catch(e){}
+      try{ localStorage.setItem(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg, k); }catch(e){}
     }
   }
   return k;
