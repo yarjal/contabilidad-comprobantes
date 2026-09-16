@@ -200,8 +200,21 @@ const firebaseConfig = {
 };
 // ========================================================================================
 
-// ======= PEGA AQUÍ TU CLAVE GRATUITA DE GEMINI (aistudio.google.com/apikey) =======
-const GEMINI_API_KEY = "AQ.Ab8RN6K0n2xfWT6qjsPtxSUp6ZHSApKSW67Sv3a0n0uVKpf0fQ";
+// ======= CLAVE DE GEMINI =======
+// No hace falta editar nada aquí: la primera vez que uses la app te la va a pedir,
+// y queda guardada en tu navegador (no se pierde aunque actualicemos este archivo).
+function getGeminiKey(){
+  let k = null;
+  try{ k = localStorage.getItem('gemini_api_key'); }catch(e){}
+  if(!k){
+    k = prompt('Pega aquí tu clave de Gemini (solo se te pide una vez en este dispositivo):');
+    if(k){
+      k = k.trim();
+      try{ localStorage.setItem('gemini_api_key', k); }catch(e){}
+    }
+  }
+  return k;
+}
 // ========================================================================================
 
 const app = initializeApp(firebaseConfig);
@@ -433,6 +446,11 @@ const receiptsCol = collection(db, "receipts");
   }
 
   async function readAmountFromImage(base64){
+    const GEMINI_API_KEY = getGeminiKey();
+    if(!GEMINI_API_KEY){
+      showError('Falta la clave de Gemini. Recarga la página para pegarla.');
+      return null;
+    }
     const prompt = 'Esta imagen es una foto tomada con cámara de la pantalla de un celular, mostrando un comprobante de una transferencia o pago (apps como DeUna, o bancos como Banco Pichincha, Banco Internacional, Banco de Guayaquil, BGR, etc.). Puede tener reflejos, dedos o el marco del teléfono alrededor. Ignora la hora, batería o señal de la barra superior del celular, esas nunca son el monto. Encuentra el monto REAL de la transferencia: suele decir "Monto", "Valor transferido", "Valor pagado" o aparecer como el número grande junto a "Transferencia Exitosa". Si el comprobante muestra por separado un "Valor transferido" y un "Total debitado" (que incluye comisión), usa el "Valor transferido" (sin comisión), NO el total debitado. Da siempre tu mejor estimación del monto, incluso si la imagen está algo borrosa o el número no se ve perfecto — alguien va a poder corregirlo después si te equivocas, así que es mejor arriesgar una respuesta razonable que no dar ninguna. Responde ÚNICAMENTE con un JSON de una sola línea con la forma {"amount": 12.34}, usando ese monto como número (punto decimal, sin símbolos de moneda). Solo responde {"amount": null} si de verdad no hay ningún número de monto visible en la imagen. No incluyas explicaciones ni bloques de código.';
     try{
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
@@ -449,7 +467,17 @@ const receiptsCol = collection(db, "receipts");
         })
       });
       const data = await response.json();
-      if(data.error){ console.error('Gemini error', data.error); showError('La IA no respondió: '+data.error.message); return null; }
+      if(data.error){
+        console.error('Gemini error', data.error);
+        const msg = data.error.message || '';
+        if(/API key|API_KEY|invalid key|PERMISSION_DENIED/i.test(msg)){
+          try{ localStorage.removeItem('gemini_api_key'); }catch(e){}
+          showError('La clave de Gemini parece incorrecta. Recarga la página para pegarla de nuevo. Detalle: '+msg);
+        }else{
+          showError('La IA no respondió: '+msg);
+        }
+        return null;
+      }
       const cand = data.candidates && data.candidates[0];
       if(!cand || !cand.content || !cand.content.parts){
         console.error('Respuesta inesperada de Gemini', data);
