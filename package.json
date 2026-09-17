@@ -1,0 +1,9 @@
+{
+  "name": "enviar-comprobantes",
+  "version": "1.0.0",
+  "private": true,
+  "dependencies": {
+    "archiver": "^7.0.1",
+    "nodemailer": "^6.9.14"
+  }
+}
