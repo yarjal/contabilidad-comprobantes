@@ -1,1 +1,29 @@
+name: Enviar comprobantes del día por correo
 
+on:
+  schedule:
+    # 20:00 UTC = 15:00 (3pm) hora Ecuador, todos los días
+    - cron: '0 20 * * *'
+  workflow_dispatch: {} # permite correrlo manualmente desde la pestaña "Actions" para probar
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Preparar Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Instalar dependencias
+        run: npm install
+
+      - name: Ejecutar el envío
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          DEST_EMAIL: ${{ secrets.DEST_EMAIL }}
+        run: node enviar-comprobantes.js
