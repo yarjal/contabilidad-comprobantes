@@ -205,12 +205,12 @@ const firebaseConfig = {
 // y queda guardada en tu navegador (no se pierde aunque actualicemos este archivo).
 function getGeminiKey(){
   let k = null;
-  try{ k = localStorage.getItem(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg); }catch(e){}
+  try{ k = localStorage.getItem('gemini_api_key'); }catch(e){}
   if(!k){
-    k = prompt(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg);
+    k = prompt('Pega aquí tu clave de Gemini (solo se te pide una vez en este dispositivo):');
     if(k){
       k = k.trim();
-      try{ localStorage.setItem(AQ.Ab8RN6LuchphTsQiwDjC2PEArFRFn_L7cvYEy9PvJY9VAq75fg, k); }catch(e){}
+      try{ localStorage.setItem('gemini_api_key', k); }catch(e){}
     }
   }
   return k;
@@ -425,10 +425,19 @@ const receiptsCol = collection(db, "receipts");
 
   function compressImage(file, maxWidth, quality){
     return new Promise((resolve, reject)=>{
+      let settled = false;
+      const limite = setTimeout(()=>{
+        if(settled) return;
+        settled = true;
+        reject(new Error('La imagen tardó demasiado en abrirse (puede que el formato de la foto no sea compatible, por ejemplo .heic de iPhone). Intenta tomarla de nuevo o exportarla como jpg/png.'));
+      }, 15000);
       const reader = new FileReader();
       reader.onload = ()=>{
         const img = new Image();
         img.onload = ()=>{
+          if(settled) return;
+          settled = true;
+          clearTimeout(limite);
           const scale = Math.min(1, maxWidth/img.width);
           const w = Math.round(img.width*scale), h = Math.round(img.height*scale);
           const canvas = document.createElement('canvas');
@@ -437,10 +446,20 @@ const receiptsCol = collection(db, "receipts");
           const dataUrl = canvas.toDataURL('image/jpeg', quality);
           resolve(dataUrl.split(',')[1]);
         };
-        img.onerror = reject;
+        img.onerror = ()=>{
+          if(settled) return;
+          settled = true;
+          clearTimeout(limite);
+          reject(new Error('No se pudo abrir esa imagen (formato no compatible).'));
+        };
         img.src = reader.result;
       };
-      reader.onerror = reject;
+      reader.onerror = ()=>{
+        if(settled) return;
+        settled = true;
+        clearTimeout(limite);
+        reject(reader.error || new Error('No se pudo leer el archivo.'));
+      };
       reader.readAsDataURL(file);
     });
   }
@@ -452,10 +471,13 @@ const receiptsCol = collection(db, "receipts");
       return null;
     }
     const prompt = 'Esta imagen es una foto tomada con cámara de la pantalla de un celular, mostrando un comprobante de una transferencia o pago (apps como DeUna, o bancos como Banco Pichincha, Banco Internacional, Banco de Guayaquil, BGR, etc.). Puede tener reflejos, dedos o el marco del teléfono alrededor. Ignora la hora, batería o señal de la barra superior del celular, esas nunca son el monto. Encuentra el monto REAL de la transferencia: suele decir "Monto", "Valor transferido", "Valor pagado" o aparecer como el número grande junto a "Transferencia Exitosa". Si el comprobante muestra por separado un "Valor transferido" y un "Total debitado" (que incluye comisión), usa el "Valor transferido" (sin comisión), NO el total debitado. Da siempre tu mejor estimación del monto, incluso si la imagen está algo borrosa o el número no se ve perfecto — alguien va a poder corregirlo después si te equivocas, así que es mejor arriesgar una respuesta razonable que no dar ninguna. Responde ÚNICAMENTE con un JSON de una sola línea con la forma {"amount": 12.34}, usando ese monto como número (punto decimal, sin símbolos de moneda). Solo responde {"amount": null} si de verdad no hay ningún número de monto visible en la imagen. No incluyas explicaciones ni bloques de código.';
+    const controller = new AbortController();
+    const timeoutId = setTimeout(()=>controller.abort(), 25000);
     try{
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${GEMINI_API_KEY}`, {
         method:'POST',
         headers:{'Content-Type':'application/json'},
+        signal: controller.signal,
         body: JSON.stringify({
           contents:[{
             parts:[
@@ -466,6 +488,7 @@ const receiptsCol = collection(db, "receipts");
           generationConfig:{ responseMimeType:'application/json' }
         })
       });
+      clearTimeout(timeoutId);
       const data = await response.json();
       if(data.error){
         console.error('Gemini error', data.error);
@@ -490,8 +513,13 @@ const receiptsCol = collection(db, "receipts");
       const val = parseFloat(parsed.amount);
       return isNaN(val) ? null : val;
     }catch(e){
+      clearTimeout(timeoutId);
       console.error('vision error', e);
-      showError('Error leyendo la respuesta de la IA: '+(e.message||e));
+      if(e.name === 'AbortError'){
+        showError('La IA tardó demasiado en responder (más de 25s) y se canceló. Este comprobante quedó marcado para revisar a mano.');
+      }else{
+        showError('Error leyendo la respuesta de la IA: '+(e.message||e));
+      }
       return null;
     }
   }
