@@ -174,7 +174,15 @@
         <h2>Gráficas de ventas</h2>
         <p>Historial de ventas por día. No se reinicia.</p>
       </div>
-      <div class="chart-wrap" id="chart-wrap"></div>
+
+      <div class="recent-title">Velas diarias (abre / cierra / máximo / mínimo por comprobante)</div>
+      <div class="chart-wrap" id="chart-velas"></div>
+
+      <div class="recent-title" style="margin-top:28px;">Tendencia del total vendido por día</div>
+      <div class="chart-wrap" id="chart-tendencia"></div>
+
+      <div class="recent-title" style="margin-top:28px;">Distribución de la semana</div>
+      <div class="chart-wrap" id="chart-torta"></div>
     </section>
   </main>
 </div>
@@ -574,6 +582,12 @@ const receiptsCol = collection(db, "receipts");
   document.getElementById('btn-cargar-mas').addEventListener('click', loadCapturas);
 
   // ---------- Graficas de ventas ----------
+  function diaInfo(ds){
+    const d = ds.split('-').map(Number);
+    const dt = new Date(d[0], d[1]-1, d[2]);
+    return { abbr: DIAS_ABR[dt.getDay()], dia: d[2] };
+  }
+
   async function renderGraficas(){
     const dias = [];
     const hoy = new Date();
@@ -591,41 +605,140 @@ const receiptsCol = collection(db, "receipts");
       showError('No se pudo cargar el historial de ventas. Detalle: '+(e.message||e));
       return;
     }
-    const totalsByDate = {};
-    snap.docs.forEach(d=>{
-      const r = d.data();
-      totalsByDate[r.date] = (totalsByDate[r.date]||0) + Number(r.amount||0);
+    const porDia = {};
+    snap.docs.forEach(docu=>{
+      const r = docu.data();
+      if(!porDia[r.date]) porDia[r.date] = [];
+      porDia[r.date].push({ amount: Number(r.amount||0), t: tsMillis(r) });
     });
-    const valores = dias.map(ds => totalsByDate[ds] || 0);
 
-    const w = 680, hgt = 260, padL = 4, padB = 34, padT = 20;
-    const max = Math.max(1, ...valores);
-    const barW = (w - padL*2) / dias.length * 0.62;
-    const gap = (w - padL*2) / dias.length;
-
-    let bars = '';
-    dias.forEach((ds,i)=>{
-      const v = valores[i];
-      const barH = (v/max) * (hgt - padB - padT);
-      const x = padL + i*gap + (gap-barW)/2;
-      const y = hgt - padB - barH;
-      const isToday = ds === todayStr();
-      const color = isToday ? 'var(--ink)' : '#C7C7C7';
-      const d = ds.split('-');
-      const dayAbbr = DIAS_ABR[new Date(+d[0],+d[1]-1,+d[2]).getDay()];
-      bars += `<rect x="${x}" y="${y}" width="${barW}" height="${Math.max(barH,1)}" rx="2" fill="${color}"></rect>`;
-      if(v>0){
-        bars += `<text class="bar-label-value" x="${x+barW/2}" y="${y-6}" text-anchor="middle">${v>=1000?Math.round(v):v.toFixed(0)}</text>`;
+    const stats = dias.map(ds=>{
+      const lista = (porDia[ds]||[]).slice().sort((a,b)=>a.t-b.t);
+      if(lista.length === 0){
+        return { date: ds, total:0, open:null, close:null, high:null, low:null, count:0 };
       }
-      bars += `<text class="bar-label-day" x="${x+barW/2}" y="${hgt-14}" text-anchor="middle">${dayAbbr} ${d[2]}</text>`;
+      const montos = lista.map(x=>x.amount);
+      return {
+        date: ds,
+        total: montos.reduce((s,v)=>s+v,0),
+        open: montos[0],
+        close: montos[montos.length-1],
+        high: Math.max(...montos),
+        low: Math.min(...montos),
+        count: montos.length
+      };
     });
 
-    document.getElementById('chart-wrap').innerHTML =
+    renderVelas(stats);
+    renderTendencia(stats);
+    renderTorta(stats);
+  }
+
+  function renderVelas(stats){
+    const w=680, hgt=260, padL=14, padR=14, padB=34, padT=16;
+    const activos = stats.filter(s=>s.count>0);
+    const maxV = Math.max(1, ...activos.map(s=>s.high));
+    const minV = activos.length ? Math.min(...activos.map(s=>s.low)) : 0;
+    const rango = Math.max(0.01, maxV-minV);
+    const innerH = hgt-padT-padB;
+    const y = v => padT + innerH - ((v-minV)/rango)*innerH;
+    const gap = (w-padL-padR)/stats.length;
+    const bodyW = Math.max(3, gap*0.42);
+
+    let out = '';
+    stats.forEach((s,i)=>{
+      const cx = padL + gap*i + gap/2;
+      const info = diaInfo(s.date);
+      if(s.count === 0){
+        out += `<text class="bar-label-day" x="${cx}" y="${hgt-14}" text-anchor="middle">${info.abbr} ${info.dia}</text>`;
+        return;
+      }
+      const subio = s.close >= s.open;
+      const color = subio ? '#1E7D45' : '#B23B3B';
+      const yHigh=y(s.high), yLow=y(s.low), yOpen=y(s.open), yClose=y(s.close);
+      const bodyTop = Math.min(yOpen,yClose), bodyBot = Math.max(yOpen,yClose);
+      out += `<line x1="${cx}" y1="${yHigh}" x2="${cx}" y2="${yLow}" stroke="${color}" stroke-width="1.5"/>`;
+      out += `<rect x="${cx-bodyW/2}" y="${bodyTop}" width="${bodyW}" height="${Math.max(bodyBot-bodyTop,1.5)}" fill="${color}" rx="1"/>`;
+      out += `<text class="bar-label-day" x="${cx}" y="${hgt-14}" text-anchor="middle">${info.abbr} ${info.dia}</text>`;
+    });
+
+    document.getElementById('chart-velas').innerHTML =
       `<svg viewBox="0 0 ${w} ${hgt}" style="width:100%;height:auto;max-width:680px;">
-         <line x1="${padL}" y1="${hgt-padB}" x2="${w-padL}" y2="${hgt-padB}" stroke="var(--line)" stroke-width="1"/>
-         ${bars}
+         <line x1="${padL}" y1="${hgt-padB}" x2="${w-padR}" y2="${hgt-padB}" stroke="var(--line)" stroke-width="1"/>
+         ${out}
        </svg>
-       <p style="color:var(--muted);font-size:13px;margin-top:6px;">Últimos 14 días · el día de hoy se muestra en color distinto y aún puede cambiar.</p>`;
+       <p style="color:var(--muted);font-size:13px;margin-top:6px;">Cada vela es un día: la mecha va del comprobante más chico al más grande, y el cuerpo va del primero al último del día. Verde = cerró más alto que abrió, rojo = más bajo.</p>`;
+  }
+
+  function renderTendencia(stats){
+    const w=680, hgt=220, padL=14, padR=14, padB=34, padT=22;
+    const valores = stats.map(s=>s.total);
+    const maxV = Math.max(1, ...valores);
+    const innerH = hgt-padT-padB;
+    const y = v => padT + innerH - (v/maxV)*innerH;
+    const gap = (w-padL-padR)/Math.max(1, stats.length-1);
+    const x = i => padL + gap*i;
+
+    let segs = '';
+    for(let i=1;i<stats.length;i++){
+      const subio = valores[i] >= valores[i-1];
+      const color = subio ? '#1E7D45' : '#B23B3B';
+      segs += `<line x1="${x(i-1)}" y1="${y(valores[i-1])}" x2="${x(i)}" y2="${y(valores[i])}" stroke="${color}" stroke-width="2.4"/>`;
+    }
+    let puntos = '';
+    stats.forEach((s,i)=>{
+      const info = diaInfo(s.date);
+      puntos += `<circle cx="${x(i)}" cy="${y(s.total)}" r="3" fill="var(--ink)"/>`;
+      if(s.total>0){
+        puntos += `<text class="bar-label-value" x="${x(i)}" y="${y(s.total)-8}" text-anchor="middle">${s.total>=1000?Math.round(s.total):s.total.toFixed(0)}</text>`;
+      }
+      puntos += `<text class="bar-label-day" x="${x(i)}" y="${hgt-14}" text-anchor="middle">${info.abbr} ${info.dia}</text>`;
+    });
+
+    document.getElementById('chart-tendencia').innerHTML =
+      `<svg viewBox="0 0 ${w} ${hgt}" style="width:100%;height:auto;max-width:680px;">
+         <line x1="${padL}" y1="${hgt-padB}" x2="${w-padR}" y2="${hgt-padB}" stroke="var(--line)" stroke-width="1"/>
+         ${segs}${puntos}
+       </svg>
+       <p style="color:var(--muted);font-size:13px;margin-top:6px;">Verde cuando el total del día subió respecto al anterior, rojo cuando bajó.</p>`;
+  }
+
+  function renderTorta(stats){
+    const ultimos7 = stats.slice(-7);
+    const total = ultimos7.reduce((s,d)=>s+d.total,0);
+    const cont = document.getElementById('chart-torta');
+    if(total <= 0){
+      cont.innerHTML = '<p class="empty-note">Aún no hay ventas suficientes esta semana para mostrar la distribución.</p>';
+      return;
+    }
+    const cx=110, cy=110, r=100;
+    const colores = ['#111111','#3A3A3A','#5C5C5C','#7E7E7E','#9E9E9E','#BDBDBD','#DCDCDC'];
+    let path = '', leyenda = '';
+    let anguloActual = -Math.PI/2;
+    ultimos7.forEach((s,i)=>{
+      const frac = s.total/total;
+      const color = colores[i % colores.length];
+      const info = diaInfo(s.date);
+      if(frac > 0){
+        const angulo = frac*2*Math.PI;
+        const x1 = cx + r*Math.cos(anguloActual), y1 = cy + r*Math.sin(anguloActual);
+        const anguloFin = anguloActual+angulo;
+        const x2 = cx + r*Math.cos(anguloFin), y2 = cy + r*Math.sin(anguloFin);
+        const largeArc = angulo > Math.PI ? 1 : 0;
+        path += `<path d="M${cx},${cy} L${x1},${y1} A${r},${r} 0 ${largeArc} 1 ${x2},${y2} Z" fill="${color}"/>`;
+        anguloActual = anguloFin;
+      }
+      leyenda += `<div style="display:flex;align-items:center;gap:8px;font-size:12.5px;color:var(--ink-soft);margin-bottom:6px;">
+        <span style="width:11px;height:11px;border-radius:3px;background:${color};display:inline-block;flex-shrink:0;"></span>
+        ${info.abbr} ${info.dia} · ${money(s.total)} (${Math.round(frac*100)}%)
+      </div>`;
+    });
+    cont.innerHTML =
+      `<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:center;">
+         <svg viewBox="0 0 220 220" style="width:170px;height:170px;flex-shrink:0;">${path}</svg>
+         <div>${leyenda}</div>
+       </div>
+       <p style="color:var(--muted);font-size:13px;margin-top:10px;">Qué porcentaje de lo vendido en los últimos 7 días corresponde a cada día.</p>`;
   }
 
   init();
